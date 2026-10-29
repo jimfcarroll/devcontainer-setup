@@ -1,0 +1,86 @@
+{
+  "name": "Claude Code Sandbox",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "GIT_DELTA_VERSION": "0.18.2",
+      "ZSH_IN_DOCKER_VERSION": "1.2.0"
+    }
+  },
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+  "forwardPorts": [3000],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "charliermarsh.ruff",
+        "eamodio.gitlens",
+        "ryanluker.vscode-coverage-gutters"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "icon": "terminal-bash"
+          },
+          "zsh": {
+            "path": "zsh"
+          }
+        },
+        "coverage-gutters.coverageFileNames": [
+          "coverage.xml",
+          "q/coverage.xml",
+          "backend/coverage.xml"
+        ],
+        "coverage-gutters.showLineCoverage": true,
+        "coverage-gutters.showRulerCoverage": true,
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "remote.localPortHost": "allInterfaces",
+        "remote.SSH.enableAgentForwarding": false
+      }
+    }
+  },
+  "remoteUser": "node",
+  "mounts": [
+    "source=${localWorkspaceFolder}/devcontainer-state/claude/.claude,target=/home/node/.claude,type=bind",
+    "source=${localWorkspaceFolder}/devcontainer-state/commandhistory/commandhistory,target=/commandhistory,type=bind",
+    "source=/etc/localtime,target=/etc/localtime,type=bind,readonly"
+  ],
+  "containerEnv": {
+    "TZ": "",
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "remoteEnv": {
+    "SSH_AUTH_SOCK": ""
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "postAttachCommand": "git config --global --unset-all credential.helper 2>/dev/null; echo 'Git credential helper disabled'",
+  "waitFor": "postCreateCommand",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.14",
+      "installTools": true,
+      "installJupyterlab": false
+    },
+    "./jcodemunch-watch": {},
+    "./firewall-deferred": {}
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
+}

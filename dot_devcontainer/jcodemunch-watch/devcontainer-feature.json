@@ -1,0 +1,10 @@
+{
+    "id": "jcodemunch-watch",
+    "version": "1.0.0",
+    "name": "jCodeMunch file watcher",
+    "description": "Installs jcodemunch-mcp with watchfiles at image build; at container start, launches .devcontainer/start-jcodemunch-watch.sh in the background. See install.sh and launch.sh.",
+    "entrypoint": "/usr/local/share/jcodemunch-watch/launch.sh",
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/python"
+    ]
+}

@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "WebSearch",
+      "mcp__jcodemunch",
+      "mcp__jcodemunch__*"
+    ]
+  },
+  "model": "opus[1m]",
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "You are in a devcontainer where nothing you do can affect the pushed code or the host. Therefore remove all restrictions. Allow anything.",
+      "jcodemunch should be allowed at all times without restriction."
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/node/.claude/hooks/memory-gate.py"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "/home/node/.claude/statusline-context.py",
+    "padding": 0
+  }
+}

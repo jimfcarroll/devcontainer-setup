@@ -1,0 +1,7 @@
+{
+    "id": "firewall-deferred",
+    "version": "1.0.0",
+    "name": "Deferred egress firewall",
+    "description": "At container start, from PID 1, launches `init-firewall.sh --after-extensions`: the egress firewall comes up once post-create has finished and VS Code's extension installs have settled, not before. The script and its sudoers rule are installed by the Dockerfile; this Feature only owns the entrypoint. See launch.sh.",
+    "entrypoint": "/usr/local/share/firewall-deferred/launch.sh"
+}

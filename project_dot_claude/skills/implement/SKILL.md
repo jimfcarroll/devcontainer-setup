@@ -11,7 +11,8 @@ If needed in order to comply, reorder the plan.
 
 # NON-NEGOTIABLES
 
-Check the change against `docs/invariants.md` before writing code, and again
+Check the change against the invariants, global and project, before writing
+code, and again
 before committing. A change that breaks an invariant does not ship — amend the
 invariant first, or find another design. Do not restate the rules here.
 

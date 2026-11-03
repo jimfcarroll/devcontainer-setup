@@ -107,7 +107,7 @@ ERROR: jCodeMunch setup failed -- $1
 
   Recover without rebuilding the container:
     jcodemunch-mcp config set tool_surface full
-    jcodemunch-mcp install claude-code --skills --skills-scope global
+    jcodemunch-mcp install claude-code --policy --guidance --skills --skills-scope global
     jcodemunch-mcp claude-md --refresh --yes
     claude mcp add -s local jcodemunch /home/node/.local/bin/jcodemunch-mcp
     jcodemunch-mcp index /workspace

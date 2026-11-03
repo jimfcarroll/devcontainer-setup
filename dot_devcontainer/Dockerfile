@@ -25,6 +25,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   vim \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# The shared libraries Chromium's headless shell needs on Debian 12
+# (Playwright's own list), and a font with Helvetica's metrics, so the
+# screenshot script in frontend/tools renders the pages as a desktop would.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  fonts-liberation \
+  libasound2 \
+  libatk-bridge2.0-0 \
+  libatk1.0-0 \
+  libatspi2.0-0 \
+  libcairo2 \
+  libcups2 \
+  libdbus-1-3 \
+  libdrm2 \
+  libgbm1 \
+  libglib2.0-0 \
+  libnspr4 \
+  libnss3 \
+  libpango-1.0-0 \
+  libx11-6 \
+  libxcb1 \
+  libxcomposite1 \
+  libxdamage1 \
+  libxext6 \
+  libxfixes3 \
+  libxkbcommon0 \
+  libxrandr2 \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Chromium's headless shell, baked in here because the firewall blocks its
+# download at runtime. The version must be the one frontend/package.json
+# pins for playwright-core: each release expects its own browser build, so
+# the two are bumped together and a bump means a rebuild.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx -y playwright-core@1.64.1 install chromium --only-shell \
+  && chmod -R a+rX /ms-playwright \
+  && rm -rf /root/.npm
+
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
   chown -R node:node /usr/local/share

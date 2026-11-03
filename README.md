@@ -9,7 +9,9 @@ clone at `related/devcontainer-setup`, gitignored, for reference.
 ## What the container provides
 
 - Claude Code runs as the native binary under the `node` user on a `node:20`
-  image with Python 3.14, `uv`, zsh, `gh` and `git-delta`.
+  image with Python 3.14, `uv`, zsh, `gh`, `git-delta`, and Chromium's headless
+  shell with its libraries, baked in so Playwright can take screenshots behind
+  the firewall.
 - An egress firewall (`init-firewall.sh`) drops everything except GitHub, npm,
   PyPI, Anthropic, the VS Code marketplace and outbound SSH. The
   `firewall-deferred` Feature launches it from PID 1, and it waits for
@@ -37,7 +39,8 @@ clone at `related/devcontainer-setup`, gitignored, for reference.
 
 `home_dot_claude/` carries the global `CLAUDE.md`, `settings.json`, the
 `memory-gate.py` hook that turns auto-memory writes into a permission prompt,
-`statusline-context.py` and `rules/safety.md`.
+`statusline-context.py`, `rules/safety.md` and `rules/invariants.md`, the global
+invariants (G1 to G3) that every session loads.
 
 ## Usage
 
@@ -50,16 +53,18 @@ the container after pulling a newer template. Which files it touches depends on
 who owns them.
 
 - The template owns everything in `.devcontainer/` except `devcontainer.json`,
-  plus the statusline, hooks and rules under `~/.claude/`, and overwrites them
-  on every run. Change those files here and re-run `init.sh`; a change made
-  only in the project is lost on the next run.
-- `devcontainer.json`, `~/.claude/CLAUDE.md` and the project's `implement`
-  skill are seeded when missing and replaced only by `--reset`.
-- Both `settings.json` files are merged on `--reset`, so template keys win and
-  user preferences survive. Without `--reset` the home copy is overwritten and
-  the project copy is seeded only when missing.
+  plus `CLAUDE.md`, the statusline, hooks and rules under `~/.claude/`, and
+  overwrites them on every run. Change those files here and re-run `init.sh`;
+  a change made only in the project is lost on the next run. The jcodemunch
+  installer re-applies its block to `CLAUDE.md` after the copy.
+- `devcontainer.json` and the project's `implement` skill are seeded when
+  missing and replaced only by `--reset`.
+- The home `settings.json` is merged on every run: template keys win, and the
+  choices Claude Code writes itself, such as model and effort, survive. The
+  project copy is seeded when missing and merged on `--reset`.
 - `docs/invariants.md` is never overwritten, not even by `--reset`. Once seeded
-  it belongs to the project.
+  it belongs to the project and holds only that project's rules; the global
+  rules are `rules/invariants.md`.
 - `--reset-memory` wipes Claude's auto-memory under `~/.claude/projects/*/memory`.
   It does not imply `--reset`.
 

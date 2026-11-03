@@ -7,7 +7,6 @@
       "mcp__jcodemunch__*"
     ]
   },
-  "model": "opus[1m]",
   "autoMode": {
     "allow": [
       "$defaults",

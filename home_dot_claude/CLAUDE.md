@@ -21,6 +21,12 @@ Sub-task implementation follows `.claude/skills/implement/SKILL.md` — tests fi
 
 ## Invariants
 
-A project's `docs/invariants.md` holds its global rules. Read it before planning
-or writing code, not just before implementing: a design that breaks one is
-wrong, however well it is built. To break one, amend that file first.
+The global rules, G1 to G3, are loaded into every session from
+`~/.claude/rules/invariants.md`. A project's own rules are in its
+`docs/invariants.md`. Read both before planning or writing code, not just
+before implementing: a design that breaks one is wrong, however well it is
+built. To break one, amend its file first.
+
+## Environment
+
+You are running inside a VS Code devcontainer.

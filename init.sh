@@ -101,7 +101,7 @@ run_jcm_install() {
   jcodemunch-mcp config set surface_offer_seen true || echo "  WARNING: config set surface_offer_seen failed" >&2
 
   ( cd "$TARGET" && CLAUDE_CONFIG_DIR="$HOME_CLAUDE" \
-      jcodemunch-mcp install claude-code --skills --skills-scope global ) \
+      jcodemunch-mcp install claude-code --policy --guidance --skills --skills-scope global ) \
     || echo "  WARNING: jcodemunch-mcp install returned non-zero" >&2
 
   # Upstream bug: `install <agent>` writes AGENTS.md unconditionally, while the
@@ -206,13 +206,13 @@ mkdir -p "$STATE/commandhistory/commandhistory"
 
 # --- ~/.claude/ baseline files ---
 echo "Seeding ~/.claude/ baseline..."
-if should_seed "$HOME_CLAUDE/CLAUDE.md"; then
-  cp "$SCRIPT_DIR/home_dot_claude/CLAUDE.md" "$HOME_CLAUDE/"
-fi
+# CLAUDE.md always overwrites (baseline-owned). The jcodemunch policy refresh
+# in run_jcm_install runs after this and re-lays its block on top.
+cp "$SCRIPT_DIR/home_dot_claude/CLAUDE.md" "$HOME_CLAUDE/"
 # statusline always overwrites (baseline-owned).
-# settings.json: full overwrite on init/--reset-memory; merge on --reset so an
-# in-flight session keeps its preferences.
-if [[ $RESET -eq 1 && -f "$HOME_CLAUDE/settings.json" ]]; then
+# settings.json: always merge, so session choices Claude Code writes itself
+# (model, effort) survive every run while the template still owns its keys.
+if [[ -f "$HOME_CLAUDE/settings.json" ]]; then
   merge_json "$SCRIPT_DIR/home_dot_claude/settings.json" "$HOME_CLAUDE/settings.json"
 else
   cp "$SCRIPT_DIR/home_dot_claude/settings.json" "$HOME_CLAUDE/"

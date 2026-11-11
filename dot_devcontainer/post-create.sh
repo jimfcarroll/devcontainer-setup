@@ -187,7 +187,24 @@ claude mcp remove jcodemunch -s local >/dev/null 2>&1 || true
 claude mcp add -s local jcodemunch "$JCM" || jcm_fail "MCP registration"
 
 echo "jCodeMunch: indexing /workspace (respects .gitignore)..."
-"$JCM" index /workspace || jcm_fail "indexing -- model fetch from huggingface.co?"
+# A project whose container is built before it has any code is a normal start,
+# not a failure. `index` then exits 1 and prints "No source files found", and
+# `health` exits 2 because there is no index to check, so both are let through
+# for that one message and nothing else. Nothing is lost by it: the watcher
+# that PID 1 starts stays alive on an empty workspace and builds the index as
+# soon as the first source file appears, and that index needs no model download,
+# so the firewall being up by then does not matter (both verified 2026-11-11
+# with jcodemunch-mcp 1.108.434).
+JCM_EMPTY=0
+jcm_index_rc=0
+jcm_index_out="$("$JCM" index /workspace)" || jcm_index_rc=$?
+printf '%s\n' "$jcm_index_out"
+if [[ $jcm_index_rc -ne 0 ]]; then
+  grep -qF '"No source files found"' <<<"$jcm_index_out" || \
+    jcm_fail "indexing -- model fetch from huggingface.co?"
+  JCM_EMPTY=1
+  echo "jCodeMunch: nothing to index yet. The watcher indexes /workspace when code arrives."
+fi
 
 # Assert the specific boxes we care about. Never grep for a bare '[ ]':
 # install-status permanently reports unchecked entries for cursor_rules,
@@ -200,8 +217,10 @@ grep -q '\[x\] Claude settings.json' <<<"$jcm_status" || jcm_fail "hooks not reg
   echo "WARNING: agent skill missing -- MCP tools still work." >&2
 
 # health is the real gate: exit codes say whether THIS run worked, health says
-# whether the system IS working.
-"$JCM" health >/dev/null 2>&1 || jcm_fail "health check -- repo not indexed"
+# whether the system IS working. An empty workspace has no index for it to check.
+if [[ $JCM_EMPTY -eq 0 ]]; then
+  "$JCM" health >/dev/null 2>&1 || jcm_fail "health check -- repo not indexed"
+fi
 "$JCM" surface 2>/dev/null | grep -q '^Surface: full' || jcm_fail "tool surface is not 'full'"
 
 rm -f "$JCM_MARKER"

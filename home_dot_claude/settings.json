@@ -31,5 +31,6 @@
     "type": "command",
     "command": "/home/node/.claude/statusline-context.py",
     "padding": 0
-  }
+  },
+  "idleCompaction": false
 }

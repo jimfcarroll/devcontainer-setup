@@ -22,20 +22,30 @@ clone at `related/devcontainer-setup`, gitignored, for reference.
   `jcodemunch-watch` Feature and registered, configured and indexed by
   `post-create.sh`. The same Feature starts a file watcher from PID 1 so the
   index follows git and shell edits, not only Claude's Edit and Write tools.
+  The template leaves out jCodeMunch's policy block and steering hooks, to keep
+  `CLAUDE.md` short, and `CLAUDE.md` carries a two-sentence rule instead.
 - State survives rebuilds. `~/.claude` and the shell history are bind mounts of
   `devcontainer-state/` in the project, which `init.sh` adds to the project's
   `.gitignore`.
 - `post-create.sh` builds a `.venv` from `requirements.txt` or `pyproject.toml`
   when either exists.
+- The image has two layers. The template's `Dockerfile` is a base image that
+  every project on the same template version shares, and each project adds its
+  own layer in `.devcontainer/project-specific/Dockerfile`. See
+  [Extending the image for one project](#extending-the-image-for-one-project).
 
 ## Layout
 
-| Directory | Lands at |
+| In the template | Lands at |
 |---|---|
 | `dot_devcontainer/` | `<project>/.devcontainer/` |
 | `home_dot_claude/` | `<project>/devcontainer-state/claude/.claude/`, mounted as `/home/node/.claude` |
 | `project_dot_claude/` | `<project>/.claude/` |
 | `project_docs/` | `<project>/docs/` |
+| `template.conf` | `<project>/.devcontainer/template.conf` |
+
+`template.conf` holds the template's settings as `KEY=value` lines. Today its
+only setting is `BASE_IMAGE_VERSION`, the version of the shared base image.
 
 `home_dot_claude/` carries the global `CLAUDE.md`, `settings.json`, the
 `memory-gate.py` hook that turns auto-memory writes into a permission prompt,
@@ -52,13 +62,16 @@ Run it from the host before the first container build, and again from inside
 the container after pulling a newer template. Which files it touches depends on
 who owns them.
 
-- The template owns everything in `.devcontainer/` except `devcontainer.json`,
-  plus `CLAUDE.md`, the statusline, hooks and rules under `~/.claude/`, and
+- The template owns everything in `.devcontainer/` except `devcontainer.json`
+  and `project-specific/`, including the copy of `template.conf`, plus
+  `CLAUDE.md`, the statusline, hooks and rules under `~/.claude/`, and
   overwrites them on every run. Change those files here and re-run `init.sh`;
-  a change made only in the project is lost on the next run. The jcodemunch
-  installer re-applies its block to `CLAUDE.md` after the copy.
+  a change made only in the project is lost on the next run.
 - `devcontainer.json` and the project's `implement` skill are seeded when
   missing and replaced only by `--reset`.
+- `.devcontainer/project-specific/` is seeded when missing and never
+  overwritten, not even by `--reset`, because it holds the project's own layer
+  of the image.
 - The home `settings.json` is merged on every run: template keys win, and the
   choices Claude Code writes itself, such as model and effort, survive. The
   project copy is seeded when missing and merged on `--reset`.
@@ -69,10 +82,77 @@ who owns them.
   It does not imply `--reset`.
 
 When `jcodemunch-mcp` is on `PATH`, which is only the case inside a container,
-`init.sh` also re-runs its installer so its policy block, hooks and MCP
-registration are laid back over the fresh baseline. On a host that step is
+`init.sh` also re-runs its installer so its hooks, skill and MCP registration
+are laid back over the fresh baseline. On a host that step is
 skipped, and `post-create.sh` does it at container creation.
 
 The scripts carry their reasoning in comments. Read them before changing the
 startup order, the firewall mode or where the watcher is launched; each has
 been wrong before in a way that was measured and written down there.
+
+## Extending the image for one project
+
+The container image is built in two layers, so that a project's own packages
+never have to go into the template.
+
+1. `devcontainer.json` runs `.devcontainer/ensure-base-image.sh` as its
+   `initializeCommand`, on the host, before the container build. The script
+   reads `BASE_IMAGE_VERSION` from `.devcontainer/template.conf` and builds the
+   template's `Dockerfile` as `devcontainer-base:<version>`, but only when that
+   image does not exist yet. Every project on the same template version shares
+   it. The script then tags it `devcontainer-base:project-${devcontainerId}`, an
+   alias that belongs to this project alone.
+2. `devcontainer.json` then builds `.devcontainer/project-specific/Dockerfile`,
+   which starts `FROM` that alias. Its build context is `project-specific/`, so
+   a `COPY` there takes paths relative to that directory.
+
+The alias is what lets `devcontainer.json` stay untouched across template
+versions. A project on version 1 and a project on version 2 each point their
+alias at their own base image, and a container start re-points the alias, so a
+project that is stamped with a newer template picks up the new base image on
+its next rebuild.
+
+The seeded `project-specific/Dockerfile` adds nothing. A project puts its system
+packages, tools and files there. The base image ends as the `node` user, so a
+step that needs root switches to `USER root` and switches back to `USER node`
+before the end.
+
+### Changing the base image
+
+Bump `BASE_IMAGE_VERSION` in `template.conf` whenever you change
+`dot_devcontainer/Dockerfile` or a file it copies, such as `init-firewall.sh`.
+The script builds the base image only when its tag is missing, so without a bump
+every project keeps using the image it already has. Re-run `init.sh` to carry
+the new version into a project, and rebuild its container.
+
+### Refreshing the base image
+
+VS Code's "Rebuild Without Cache" rebuilds only the project's layer. The
+devcontainer tooling never tells `initializeCommand` which rebuild was chosen,
+so the base image keeps its cached layers. To refresh it, for example to pick
+up newer packages or a newer `node:20`, run this on the host:
+
+```
+.devcontainer/ensure-base-image.sh --rebuild
+```
+
+It rebuilds the current version with `--no-cache --pull`. Then rebuild the
+container normally. The container start re-points the project's alias at the
+fresh image, and the project's layer is rebuilt on top of it. Other projects on
+the same version pick up the refreshed image the next time they rebuild.
+
+### Removing old base images
+
+Old versions stay in Docker's image store until you remove them. List them with
+`docker images devcontainer-base` and remove one with `docker image rm`. While a
+project's alias still points at the same image, removing the version's tag
+frees no space, because Docker only drops that one tag, so remove the aliases of
+projects you no longer use as well.
+
+### Limits
+
+- The host runs `ensure-base-image.sh` with `bash` on every container start, so
+  a host without bash, such as Windows outside WSL, cannot build the container.
+- The project build finds the alias only in the local Docker image store. The
+  default buildx builder reads that store, but a builder that uses the
+  `docker-container` driver does not, and it fails trying to pull the alias.

@@ -53,11 +53,18 @@ PY
 }
 
 # run_jcm_install
-# Hands jCodeMunch full ownership of its own configuration: the always-on policy
-# block in ~/.claude/CLAUDE.md, AGENTS.md, its hooks, and the agent skill. The
-# template deliberately does NOT pin copies of any of these -- a hand-minimised
-# subset would silently miss upstream refinements, and `install` skips anything
-# it finds "already present", so a stale copy would never be corrected.
+# Hands jCodeMunch ownership of its MCP registration, its default hooks and the
+# agent skill. The template deliberately does NOT pin copies of these -- a
+# hand-minimised subset would silently miss upstream refinements, and `install`
+# skips anything it finds "already present", so a stale copy would never be
+# corrected.
+#
+# `--policy` and `--guidance` are left out on purpose, here and in
+# post-create.sh. `--policy` appends a long policy block to ~/.claude/CLAUDE.md
+# that every session loads, and `--guidance` adds steering hooks on
+# Read/Grep/Glob/Bash, SessionStart and SubagentStart. Neither one affects
+# approval prompts (that is the tool surface, below), and the template's
+# CLAUDE.md carries its own two-sentence rule for using the index instead.
 #
 # Verified safe: idempotent (repeat runs leave CLAUDE.md byte-identical), and it
 # preserves unrelated hooks such as memory-gate.py.
@@ -96,12 +103,12 @@ run_jcm_install() {
   local had_agents=0
   [[ -f "$TARGET/AGENTS.md" ]] && had_agents=1
 
-  # Surface before install, so install and the policy refresh see `full`.
+  # Surface before install, so install sees `full`.
   jcodemunch-mcp config set tool_surface full       || echo "  WARNING: config set tool_surface failed" >&2
   jcodemunch-mcp config set surface_offer_seen true || echo "  WARNING: config set surface_offer_seen failed" >&2
 
   ( cd "$TARGET" && CLAUDE_CONFIG_DIR="$HOME_CLAUDE" \
-      jcodemunch-mcp install claude-code --policy --guidance --skills --skills-scope global ) \
+      jcodemunch-mcp install claude-code --skills --skills-scope global ) \
     || echo "  WARNING: jcodemunch-mcp install returned non-zero" >&2
 
   # Upstream bug: `install <agent>` writes AGENTS.md unconditionally, while the
@@ -121,10 +128,6 @@ run_jcm_install() {
     echo "  removed AGENTS.md (install writes it unconditionally; Claude Code does not read it)"
   fi
 
-  # The policy block follows the surface; everything outside it is left alone.
-  CLAUDE_CONFIG_DIR="$HOME_CLAUDE" jcodemunch-mcp claude-md --refresh --yes \
-    || echo "  WARNING: policy block not refreshed; run: jcodemunch-mcp claude-md --refresh" >&2
-
   # Local scope is keyed by the launch directory, /workspace in every container
   # of this family, so the normalisation only makes sense from inside one.
   if [[ "$TARGET" == /workspace ]] && command -v claude >/dev/null 2>&1; then
@@ -142,6 +145,27 @@ mkdir -p "$DEVCONTAINER"
 cp "$SCRIPT_DIR/dot_devcontainer/Dockerfile" "$DEVCONTAINER/"
 cp "$SCRIPT_DIR/dot_devcontainer/init-firewall.sh" "$DEVCONTAINER/"
 cp "$SCRIPT_DIR/dot_devcontainer/post-create.sh" "$DEVCONTAINER/"
+
+# The shared base image, baseline-owned like the scripts above. The Dockerfile
+# copied above is the base image; ensure-base-image.sh runs on the host as
+# devcontainer.json's initializeCommand, builds that image when it is missing,
+# and points the project's alias at it. template.conf carries the base image's
+# version, and the script reads it from .devcontainer/ so the project never
+# depends on a clone of this template being present.
+cp "$SCRIPT_DIR/template.conf" "$DEVCONTAINER/"
+cp "$SCRIPT_DIR/dot_devcontainer/ensure-base-image.sh" "$DEVCONTAINER/"
+chmod +x "$DEVCONTAINER/ensure-base-image.sh"
+
+# project-specific/ is the project's own layer on top of the base image. It is
+# seeded when missing and NEVER overwritten, not even by --reset, for the same
+# reason as docs/invariants.md: from the moment it exists it holds the project's
+# own packages and files, and a reset that restored the template's bare copy
+# would silently drop them.
+if [[ ! -e "$DEVCONTAINER/project-specific/Dockerfile" ]]; then
+  echo "  Seeding .devcontainer/project-specific/..."
+  mkdir -p "$DEVCONTAINER/project-specific"
+  cp "$SCRIPT_DIR/dot_devcontainer/project-specific/Dockerfile" "$DEVCONTAINER/project-specific/"
+fi
 
 # The jCodeMunch file watcher, baseline-owned like the scripts above.
 #
@@ -198,6 +222,17 @@ if ! grep -q "firewall-deferred" "$DEVCONTAINER/devcontainer.json"; then
   echo "           (set \"waitFor\" to \"postCreateCommand\"). Until then the" >&2
   echo "           egress firewall never comes up: the Feature is what starts it." >&2
 fi
+# A devcontainer.json from before the base image split still builds the
+# template's Dockerfile directly, so the project's layer never reaches the image.
+if ! grep -q "ensure-base-image.sh" "$DEVCONTAINER/devcontainer.json" \
+   || ! grep -q "project-specific/Dockerfile" "$DEVCONTAINER/devcontainer.json"; then
+  echo "  WARNING: $DEVCONTAINER/devcontainer.json does not build on the shared" >&2
+  echo "           base image. Give it the template's \"initializeCommand\", which" >&2
+  echo "           runs ensure-base-image.sh, and its \"build\" block, which builds" >&2
+  echo "           project-specific/Dockerfile, or re-run with --reset to take the" >&2
+  echo "           template's copy. Until then project-specific/ never reaches" >&2
+  echo "           the image." >&2
+fi
 
 # --- devcontainer-state/ (mount targets) ---
 echo "Setting up devcontainer-state/..."
@@ -206,8 +241,7 @@ mkdir -p "$STATE/commandhistory/commandhistory"
 
 # --- ~/.claude/ baseline files ---
 echo "Seeding ~/.claude/ baseline..."
-# CLAUDE.md always overwrites (baseline-owned). The jcodemunch policy refresh
-# in run_jcm_install runs after this and re-lays its block on top.
+# CLAUDE.md always overwrites (baseline-owned).
 cp "$SCRIPT_DIR/home_dot_claude/CLAUDE.md" "$HOME_CLAUDE/"
 # statusline always overwrites (baseline-owned).
 # settings.json: always merge, so session choices Claude Code writes itself

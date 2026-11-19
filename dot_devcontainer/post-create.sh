@@ -107,8 +107,7 @@ ERROR: jCodeMunch setup failed -- $1
 
   Recover without rebuilding the container:
     jcodemunch-mcp config set tool_surface full
-    jcodemunch-mcp install claude-code --policy --guidance --skills --skills-scope global
-    jcodemunch-mcp claude-md --refresh --yes
+    jcodemunch-mcp install claude-code --skills --skills-scope global
     claude mcp add -s local jcodemunch /home/node/.local/bin/jcodemunch-mcp
     jcodemunch-mcp index /workspace
     jcodemunch-mcp health
@@ -121,8 +120,8 @@ EOF
   exit 1
 }
 
-# Surface first: the server, the steering hook and the policy block all read
-# it, and a fresh container's config.jsonc is born saying "counter". `full`
+# Surface first: the server reads it, and a fresh container's config.jsonc is
+# born saying "counter". `full`
 # because Claude Code defers MCP tools anyway and loads jcodemunch's six core
 # read tools up front (1.108.389), all annotated read-only, so plan mode runs
 # them silently; under `counter` the only query path is order/route, which
@@ -133,15 +132,21 @@ echo "jCodeMunch: tool surface -> full"
 "$JCM" config set tool_surface full       || jcm_fail "config set tool_surface"
 "$JCM" config set surface_offer_seen true || jcm_fail "config set surface_offer_seen"
 
-# Let jCodeMunch own its own configuration: MCP registration, the always-on
-# policy block in ~/.claude/CLAUDE.md, AGENTS.md, its hooks, and the agent skill.
+# Let jCodeMunch own its MCP registration, its default hooks and the agent skill.
 # The template pins none of these on purpose -- `install` skips whatever it finds
 # "already present", so a hand-maintained copy here would freeze at whatever the
 # tool looked like the day it was written and never pick up refinements.
 #
+# `--policy` and `--guidance` are left out on purpose, here and in init.sh.
+# `--policy` appends a long policy block to ~/.claude/CLAUDE.md that every
+# session loads, and `--guidance` adds steering hooks on Read/Grep/Glob/Bash,
+# SessionStart and SubagentStart. Neither one affects approval prompts (that is
+# the tool surface, above), and the template's CLAUDE.md carries its own
+# two-sentence rule for using the index instead.
+#
 # Verified: idempotent across repeat runs, and it preserves unrelated hooks such
 # as memory-gate.py.
-echo "jCodeMunch: installing (registration, policy, hooks, skill)..."
+echo "jCodeMunch: installing (registration, hooks, skill)..."
 # cwd is /workspace here (set above), which is where install_agents_md() writes.
 JCM_HAD_AGENTS=0
 [[ -f /workspace/AGENTS.md ]] && JCM_HAD_AGENTS=1
@@ -165,13 +170,6 @@ if [[ $JCM_HAD_AGENTS -eq 0 && -f /workspace/AGENTS.md ]]; then
   rm -f /workspace/AGENTS.md
   echo "jCodeMunch: removed AGENTS.md (written unconditionally; Claude Code does not read it)"
 fi
-
-# The policy block in ~/.claude/CLAUDE.md follows the surface. `install`
-# refreshes a block it finds; this makes that explicit and covers a block
-# written under the old surface. Everything outside the block is left alone.
-echo "jCodeMunch: refreshing the CLAUDE.md policy block..."
-"$JCM" claude-md --refresh --yes || \
-  echo "WARNING: policy block not refreshed; run: jcodemunch-mcp claude-md --refresh" >&2
 
 # One registration, one scope, one command. The installer's `claude mcp add`
 # carries no scope flag (so, local) and names `uvx jcodemunch-mcp`, a second

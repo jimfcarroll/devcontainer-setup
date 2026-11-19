@@ -30,3 +30,9 @@ built. To break one, amend its file first.
 ## Environment
 
 You are running inside a VS Code devcontainer.
+
+## Code navigation
+
+Use the jCodeMunch MCP tools to find and read code in any indexed repository.
+Use Grep and Read only for non-code files, for the exact lines just before an
+Edit, or for paths the index does not cover.

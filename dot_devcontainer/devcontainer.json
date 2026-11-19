@@ -1,10 +1,15 @@
 {
   "name": "Claude Code Sandbox",
+  "initializeCommand": [
+    "bash",
+    "${localWorkspaceFolder}/.devcontainer/ensure-base-image.sh",
+    "devcontainer-base:project-${devcontainerId}"
+  ],
   "build": {
-    "dockerfile": "Dockerfile",
+    "dockerfile": "project-specific/Dockerfile",
+    "context": "project-specific",
     "args": {
-      "GIT_DELTA_VERSION": "0.18.2",
-      "ZSH_IN_DOCKER_VERSION": "1.2.0"
+      "BASE_IMAGE": "devcontainer-base:project-${devcontainerId}"
     }
   },
   "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],

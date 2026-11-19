@@ -1,3 +1,13 @@
+# The template's shared base image.
+#
+# ensure-base-image.sh builds this file on the host and tags the result
+# devcontainer-base:<BASE_IMAGE_VERSION>, with the version taken from
+# template.conf. Every project on the same template version shares that image,
+# and each project builds its own layer on top of it from
+# project-specific/Dockerfile. Bump BASE_IMAGE_VERSION in template.conf whenever
+# you change this file or anything it copies, or projects keep using the image
+# they already have.
+
 FROM node:20
 
 ENV LC_ALL=C.UTF-8

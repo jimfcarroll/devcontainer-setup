@@ -280,15 +280,25 @@ chmod +x "$HOME_CLAUDE/hooks/"*.py
 
 # --- <workspace>/.claude/ ---
 echo "Seeding project .claude/..."
-mkdir -p "$PROJ_CLAUDE/skills/implement"
+mkdir -p "$PROJ_CLAUDE/skills"
 if [[ ! -f "$PROJ_CLAUDE/settings.json" ]]; then
   cp "$SCRIPT_DIR/project_dot_claude/settings.json" "$PROJ_CLAUDE/"
 elif [[ $RESET -eq 1 ]]; then
   merge_json "$SCRIPT_DIR/project_dot_claude/settings.json" "$PROJ_CLAUDE/settings.json"
 fi
-if should_seed "$PROJ_CLAUDE/skills/implement/SKILL.md"; then
-  cp "$SCRIPT_DIR/project_dot_claude/skills/implement/SKILL.md" "$PROJ_CLAUDE/skills/implement/"
-fi
+# Every skill in project_dot_claude/skills/ is seeded when the project lacks it,
+# and the project may then tailor its copy. --reset replaces each of the
+# template's skills whole, so a file the template has since dropped does not
+# linger. A skill the project added itself is not the template's, and neither a
+# plain run nor --reset touches it.
+for skill_dir in "$SCRIPT_DIR/project_dot_claude/skills"/*; do
+  [[ -d "$skill_dir" ]] || continue
+  skill="$(basename "$skill_dir")"
+  if should_seed "$PROJ_CLAUDE/skills/$skill/SKILL.md"; then
+    rm -rf "$PROJ_CLAUDE/skills/$skill"
+    cp -R "$skill_dir" "$PROJ_CLAUDE/skills/$skill"
+  fi
+done
 
 # --- <workspace>/docs/invariants.md ---
 # The project's global rules; the implement skill checks every change against

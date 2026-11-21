@@ -2,8 +2,8 @@
 
 A template and an installer for a sandboxed Claude Code devcontainer. Running
 `init.sh` against a project stamps in a `.devcontainer/`, a bind-mounted home for
-Claude Code's state, a baseline `~/.claude/` configuration, a project-level
-`implement` skill and a `docs/invariants.md`. A project that uses it keeps a
+Claude Code's state, a baseline `~/.claude/` configuration, the project-level
+skills in `project_dot_claude/skills/` and a `docs/invariants.md`. A project that uses it keeps a
 clone at `related/devcontainer-setup`, gitignored, for reference.
 
 ## What the container provides
@@ -71,8 +71,9 @@ who owns them.
   `CLAUDE.md`, the statusline, hooks and rules under `~/.claude/`, and
   overwrites them on every run. Change those files here and re-run `init.sh`;
   a change made only in the project is lost on the next run.
-- `devcontainer.json` and the project's `implement` skill are seeded when
-  missing and replaced only by `--reset`.
+- `devcontainer.json` and each of the template's project skills are seeded when
+  missing and replaced only by `--reset`, which replaces a skill's whole
+  directory. A skill the project added itself is never touched.
 - `.devcontainer/project-specific/`, which holds a `Dockerfile` and a `conf.sh`,
   is seeded file by file when missing and never overwritten, not even by
   `--reset`, because it holds the project's own layer of the image and its own

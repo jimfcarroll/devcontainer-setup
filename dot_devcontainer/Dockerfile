@@ -1,12 +1,12 @@
 # The template's shared base image.
 #
 # ensure-base-image.sh builds this file on the host and tags the result
-# devcontainer-base:<BASE_IMAGE_VERSION>, with the version taken from
-# template.conf. Every project on the same template version shares that image,
-# and each project builds its own layer on top of it from
-# project-specific/Dockerfile. Bump BASE_IMAGE_VERSION in template.conf whenever
-# you change this file or anything it copies, or projects keep using the image
-# they already have.
+# devcontainer-base:<BASE_IMAGE_VERSION>, with the version taken from conf.sh.
+# Every project on the same template version shares that image, and each
+# project builds its own layer on top of it from project-specific/Dockerfile.
+# Bump BASE_IMAGE_VERSION in conf.sh whenever you change this file or anything
+# it copies, conf.sh included, or projects keep using the image they already
+# have.
 
 FROM node:20
 
@@ -130,8 +130,11 @@ ENV PATH=$PATH:/home/node/.local/bin
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 
-# Copy and set up firewall script
+# Copy and set up firewall script, and the template's settings it sources. The
+# settings must be owned by root and writable by no one else, or the firewall
+# refuses them; see init-firewall.sh.
 COPY init-firewall.sh /usr/local/bin/
+COPY --chown=root:root --chmod=0644 conf.sh /etc/devcontainer/conf.sh
 USER root
 RUN chmod +x /usr/local/bin/init-firewall.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-firewall && \

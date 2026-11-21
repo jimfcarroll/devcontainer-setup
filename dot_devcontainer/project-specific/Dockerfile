@@ -15,3 +15,10 @@
 
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
+
+# Add this project's steps above this line.
+
+# Keep this step last. It bakes this project's conf.sh into the image as root,
+# which is the only copy the egress firewall reads. Because it comes last, an
+# edit to conf.sh rebuilds only this step, not every layer above it.
+COPY --chown=root:root --chmod=0644 conf.sh /etc/devcontainer/project-specific/conf.sh

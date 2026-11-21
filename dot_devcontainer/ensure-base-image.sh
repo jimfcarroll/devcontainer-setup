@@ -9,7 +9,7 @@
 #
 # The base image is built from the Dockerfile next to this script and tagged
 # devcontainer-base:<version>, where the version is BASE_IMAGE_VERSION in the
-# template.conf next to this script. Every project on the same template version
+# conf.sh next to this script. Every project on the same template version
 # shares that image, so it is built only when it is missing. The container image
 # itself is built from project-specific/Dockerfile, which starts FROM ALIAS.
 # devcontainer.json passes devcontainer-base:project-${devcontainerId} as ALIAS,
@@ -52,37 +52,21 @@ while [ $# -gt 0 ]; do
 done
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-conf="$here/template.conf"
-
-# Prints the value of KEY from template.conf. The file is parsed line by line
-# and never sourced, so it cannot run code. Blank lines and lines starting with
-# "#" are skipped, whitespace around the key and the value is trimmed, and when
-# a key appears more than once the last value wins.
-conf_value() {
-    local key="$1" line k v found=""
-    while IFS= read -r line || [ -n "$line" ]; do
-        line="${line#"${line%%[![:space:]]*}"}"   # trim leading whitespace
-        case "$line" in ''|'#'*) continue ;; esac
-        case "$line" in *=*) ;; *) continue ;; esac
-        k="${line%%=*}"
-        v="${line#*=}"
-        k="${k%"${k##*[![:space:]]}"}"            # trim trailing whitespace
-        v="${v#"${v%%[![:space:]]*}"}"
-        v="${v%"${v##*[![:space:]]}"}"
-        if [ "$k" = "$key" ]; then
-            found="$v"
-        fi
-    done < "$conf"
-    [ -n "$found" ] || return 1
-    printf '%s\n' "$found"
-}
+conf="$here/conf.sh"
 
 command -v docker >/dev/null 2>&1 \
     || fail "docker is not on PATH. This script runs on the host, which needs the Docker CLI."
 [ -f "$conf" ] \
     || fail "$conf is missing. Re-run the template's init.sh to restore it."
 
-version="$(conf_value BASE_IMAGE_VERSION)" \
+# conf.sh is sourced in a subshell, so the only thing it hands this script is the
+# one value printed back. The version is cleared first so that a value already
+# in the host's environment cannot stand in for a missing one. The project's own
+# project-specific/conf.sh is not read, because the base image's version belongs
+# to the template.
+version="$(BASE_IMAGE_VERSION=""; . "$conf" && printf '%s' "$BASE_IMAGE_VERSION")" \
+    || fail "$conf could not be sourced."
+[ -n "$version" ] \
     || fail "$conf does not set BASE_IMAGE_VERSION."
 
 # A Docker tag is at most 128 characters: a letter, digit or underscore,

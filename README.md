@@ -13,7 +13,8 @@ clone at `related/devcontainer-setup`, gitignored, for reference.
   shell with its libraries, baked in so Playwright can take screenshots behind
   the firewall.
 - An egress firewall (`init-firewall.sh`) drops everything except GitHub, npm,
-  PyPI, Anthropic, the VS Code marketplace and outbound SSH. The
+  PyPI, Anthropic, the VS Code marketplace, outbound SSH, and any hosts the
+  project adds. The
   `firewall-deferred` Feature launches it from PID 1, and it waits for
   post-create and for VS Code's extension installs to settle before locking
   down, because both need hosts the allowlist cannot carry. The container has
@@ -42,10 +43,13 @@ clone at `related/devcontainer-setup`, gitignored, for reference.
 | `home_dot_claude/` | `<project>/devcontainer-state/claude/.claude/`, mounted as `/home/node/.claude` |
 | `project_dot_claude/` | `<project>/.claude/` |
 | `project_docs/` | `<project>/docs/` |
-| `template.conf` | `<project>/.devcontainer/template.conf` |
+| `conf.sh` | `<project>/.devcontainer/conf.sh` |
 
-`template.conf` holds the template's settings as `KEY=value` lines. Today its
-only setting is `BASE_IMAGE_VERSION`, the version of the shared base image.
+`conf.sh` holds the template's settings as bash assignments. They are
+`BASE_IMAGE_VERSION`, the version of the shared base image, and the firewall's
+`FIREWALL_ALLOWED_DOMAINS` and `FIREWALL_ALLOW_ALL`. A project adds to them in
+`.devcontainer/project-specific/conf.sh`; see
+[Opening the firewall for one project](#opening-the-firewall-for-one-project).
 
 `home_dot_claude/` carries the global `CLAUDE.md`, `settings.json`, the
 `memory-gate.py` hook that turns auto-memory writes into a permission prompt,
@@ -63,15 +67,16 @@ the container after pulling a newer template. Which files it touches depends on
 who owns them.
 
 - The template owns everything in `.devcontainer/` except `devcontainer.json`
-  and `project-specific/`, including the copy of `template.conf`, plus
+  and `project-specific/`, including the copy of `conf.sh`, plus
   `CLAUDE.md`, the statusline, hooks and rules under `~/.claude/`, and
   overwrites them on every run. Change those files here and re-run `init.sh`;
   a change made only in the project is lost on the next run.
 - `devcontainer.json` and the project's `implement` skill are seeded when
   missing and replaced only by `--reset`.
-- `.devcontainer/project-specific/` is seeded when missing and never
-  overwritten, not even by `--reset`, because it holds the project's own layer
-  of the image.
+- `.devcontainer/project-specific/`, which holds a `Dockerfile` and a `conf.sh`,
+  is seeded file by file when missing and never overwritten, not even by
+  `--reset`, because it holds the project's own layer of the image and its own
+  settings.
 - The home `settings.json` is merged on every run: template keys win, and the
   choices Claude Code writes itself, such as model and effort, survive. The
   project copy is seeded when missing and merged on `--reset`.
@@ -97,7 +102,7 @@ never have to go into the template.
 
 1. `devcontainer.json` runs `.devcontainer/ensure-base-image.sh` as its
    `initializeCommand`, on the host, before the container build. The script
-   reads `BASE_IMAGE_VERSION` from `.devcontainer/template.conf` and builds the
+   reads `BASE_IMAGE_VERSION` from `.devcontainer/conf.sh` and builds the
    template's `Dockerfile` as `devcontainer-base:<version>`, but only when that
    image does not exist yet. Every project on the same template version shares
    it. The script then tags it `devcontainer-base:project-${devcontainerId}`, an
@@ -112,15 +117,38 @@ alias at their own base image, and a container start re-points the alias, so a
 project that is stamped with a newer template picks up the new base image on
 its next rebuild.
 
-The seeded `project-specific/Dockerfile` adds nothing. A project puts its system
-packages, tools and files there. The base image ends as the `node` user, so a
-step that needs root switches to `USER root` and switches back to `USER node`
-before the end.
+The seeded `project-specific/Dockerfile` adds nothing of its own except its last
+step, which copies `project-specific/conf.sh` into the image. A project puts its
+system packages, tools and files above that step. The base image ends as the
+`node` user, so a step that needs root switches to `USER root` and switches back
+to `USER node` before the end.
+
+### Opening the firewall for one project
+
+`.devcontainer/project-specific/conf.sh` holds the project's additions to the
+template's settings. To let the container reach more hosts, append them to the
+template's list:
+
+```bash
+FIREWALL_ALLOWED_DOMAINS+=("repo.maven.apache.org" "repo1.maven.org")
+```
+
+To lift the firewall entirely, set `FIREWALL_ALLOW_ALL=true`.
+
+Then rebuild the container. A plain restart, or running
+`sudo /usr/local/bin/init-firewall.sh` again, is not enough. `init-firewall.sh`
+runs as root, and the `node` user can run it through sudo, so it never reads the
+copies of `conf.sh` in the workspace, which anything in the container can edit.
+It reads only the copies baked into the image as root: the template's from the
+base image, and the project's from the last step of `project-specific/Dockerfile`.
+Each file must be owned by root and writable by no one else, or the firewall
+refuses it. Keep both files to plain assignments, because they are sourced.
 
 ### Changing the base image
 
-Bump `BASE_IMAGE_VERSION` in `template.conf` whenever you change
-`dot_devcontainer/Dockerfile` or a file it copies, such as `init-firewall.sh`.
+Bump `BASE_IMAGE_VERSION` in `conf.sh` whenever you change
+`dot_devcontainer/Dockerfile` or a file it copies, such as `init-firewall.sh` or
+`conf.sh` itself.
 The script builds the base image only when its tag is missing, so without a bump
 every project keeps using the image it already has. Re-run `init.sh` to carry
 the new version into a project, and rebuild its container.
@@ -156,3 +184,7 @@ projects you no longer use as well.
 - The project build finds the alias only in the local Docker image store. The
   default buildx builder reads that store, but a builder that uses the
   `docker-container` driver does not, and it fails trying to pull the alias.
+- The firewall resolves each allowed host to its addresses once, when the rules
+  are applied. A host behind a CDN, such as Maven Central or PyPI, can move to
+  new addresses during a long session. Running
+  `sudo /usr/local/bin/init-firewall.sh` resolves them again.

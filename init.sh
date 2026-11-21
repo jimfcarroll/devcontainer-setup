@@ -149,23 +149,31 @@ cp "$SCRIPT_DIR/dot_devcontainer/post-create.sh" "$DEVCONTAINER/"
 # The shared base image, baseline-owned like the scripts above. The Dockerfile
 # copied above is the base image; ensure-base-image.sh runs on the host as
 # devcontainer.json's initializeCommand, builds that image when it is missing,
-# and points the project's alias at it. template.conf carries the base image's
-# version, and the script reads it from .devcontainer/ so the project never
-# depends on a clone of this template being present.
-cp "$SCRIPT_DIR/template.conf" "$DEVCONTAINER/"
+# and points the project's alias at it. conf.sh carries the template's
+# settings, the base image's version among them, and both the script and the
+# Dockerfile read it from .devcontainer/ so the project never depends on a clone
+# of this template being present. conf.sh replaced template.conf, so a stale
+# copy of that is removed.
+cp "$SCRIPT_DIR/conf.sh" "$DEVCONTAINER/"
+rm -f "$DEVCONTAINER/template.conf"
 cp "$SCRIPT_DIR/dot_devcontainer/ensure-base-image.sh" "$DEVCONTAINER/"
 chmod +x "$DEVCONTAINER/ensure-base-image.sh"
 
-# project-specific/ is the project's own layer on top of the base image. It is
+# project-specific/ is the project's own layer on top of the base image, and its
+# conf.sh holds the project's additions to the template's settings. Each file is
 # seeded when missing and NEVER overwritten, not even by --reset, for the same
 # reason as docs/invariants.md: from the moment it exists it holds the project's
-# own packages and files, and a reset that restored the template's bare copy
-# would silently drop them.
-if [[ ! -e "$DEVCONTAINER/project-specific/Dockerfile" ]]; then
-  echo "  Seeding .devcontainer/project-specific/..."
-  mkdir -p "$DEVCONTAINER/project-specific"
-  cp "$SCRIPT_DIR/dot_devcontainer/project-specific/Dockerfile" "$DEVCONTAINER/project-specific/"
-fi
+# own packages, files and settings, and a reset that restored the template's
+# bare copy would silently drop them. conf.sh is always seeded, even beside an
+# existing Dockerfile, because the seeded Dockerfile copies it and a COPY of a
+# missing file fails the build.
+mkdir -p "$DEVCONTAINER/project-specific"
+for seed in Dockerfile conf.sh; do
+  if [[ ! -e "$DEVCONTAINER/project-specific/$seed" ]]; then
+    echo "  Seeding .devcontainer/project-specific/$seed..."
+    cp "$SCRIPT_DIR/dot_devcontainer/project-specific/$seed" "$DEVCONTAINER/project-specific/"
+  fi
+done
 
 # The jCodeMunch file watcher, baseline-owned like the scripts above.
 #
@@ -232,6 +240,15 @@ if ! grep -q "ensure-base-image.sh" "$DEVCONTAINER/devcontainer.json" \
   echo "           project-specific/Dockerfile, or re-run with --reset to take the" >&2
   echo "           template's copy. Until then project-specific/ never reaches" >&2
   echo "           the image." >&2
+fi
+# A project-specific/Dockerfile seeded before conf.sh existed never copies it into
+# the image, and the firewall reads only that baked copy, so the project's
+# settings would be silently ignored.
+if ! grep -q "/etc/devcontainer/project-specific/conf.sh" "$DEVCONTAINER/project-specific/Dockerfile"; then
+  echo "  WARNING: $DEVCONTAINER/project-specific/Dockerfile does not copy" >&2
+  echo "           conf.sh into the image. Add this as its last step:" >&2
+  echo "               COPY --chown=root:root --chmod=0644 conf.sh /etc/devcontainer/project-specific/conf.sh" >&2
+  echo "           Until then the firewall ignores project-specific/conf.sh." >&2
 fi
 
 # --- devcontainer-state/ (mount targets) ---

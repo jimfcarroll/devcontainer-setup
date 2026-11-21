@@ -132,6 +132,67 @@ fi
 exec 9>/run/init-firewall.lock
 flock 9
 
+# --- Settings ----------------------------------------------------------------
+#
+# The allowed hosts and the allow-all switch come from two files baked into the
+# image as root: the template's conf.sh, which the base Dockerfile copies, and
+# the project's, which project-specific/Dockerfile copies as its last step. They
+# are sourced here, before anything is flushed, so a broken file stops the
+# script while the existing rules still stand.
+#
+# Sourcing runs whatever a file holds, and this script runs as root through a
+# sudoers rule that node may use. A file node could edit would therefore let
+# anything in the container run code as root. So both paths are fixed rather
+# than taken from the environment, each file and its directory must be owned by
+# root and writable by no one else, and the copies in /workspace are never read.
+# A change to either file reaches the firewall only when the image is rebuilt.
+TEMPLATE_CONF=/etc/devcontainer/conf.sh
+PROJECT_CONF=/etc/devcontainer/project-specific/conf.sh
+
+# Succeeds when root owns the path and neither its group nor others can write to
+# it. A symlink always reports mode 777, so a symlink fails this check.
+only_root_can_write() {
+    local owner mode
+    owner="$(stat -c '%u' "$1")" || return 1
+    mode="$(stat -c '%a' "$1")" || return 1
+    [ "$owner" = 0 ] && [ $(( 8#$mode & 8#022 )) -eq 0 ]
+}
+
+# Succeeds when the path is a regular file, not a symlink, and both it and its
+# directory pass only_root_can_write.
+safe_to_source() {
+    [ -f "$1" ] && [ ! -L "$1" ] \
+        && only_root_can_write "$1" && only_root_can_write "$(dirname "$1")"
+}
+
+if ! safe_to_source "$TEMPLATE_CONF"; then
+    echo "ERROR: $TEMPLATE_CONF is missing, or something other than root can write to it. The base image is broken; rebuild it."
+    exit 1
+fi
+FIREWALL_ALLOWED_DOMAINS=()
+FIREWALL_ALLOW_ALL=false
+echo "Reading the template's settings from $TEMPLATE_CONF"
+# shellcheck source=/dev/null
+. "$TEMPLATE_CONF"
+
+if [ -e "$PROJECT_CONF" ] || [ -L "$PROJECT_CONF" ]; then
+    if safe_to_source "$PROJECT_CONF"; then
+        echo "Reading the project's settings from $PROJECT_CONF"
+        # shellcheck source=/dev/null
+        . "$PROJECT_CONF"
+    else
+        echo "WARNING: Ignoring $PROJECT_CONF: it must be a regular file that only root can write, in a directory only root can write"
+    fi
+fi
+
+case "$FIREWALL_ALLOW_ALL" in
+    true|false) ;;
+    *)
+        echo "WARNING: FIREWALL_ALLOW_ALL is \"$FIREWALL_ALLOW_ALL\", which is neither true nor false. Treating it as false."
+        FIREWALL_ALLOW_ALL=false
+        ;;
+esac
+
 # 1. Extract Docker DNS info BEFORE any flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 
@@ -152,6 +213,17 @@ if [ -n "$DOCKER_DNS_RULES" ]; then
     echo "$DOCKER_DNS_RULES" | xargs -L 1 iptables -t nat
 else
     echo "No Docker DNS rules to restore"
+fi
+
+# A project that sets FIREWALL_ALLOW_ALL=true gets no firewall at all. The rules
+# are already flushed, and the default policies are reset to ACCEPT in case an
+# earlier run set them to DROP.
+if [ "$FIREWALL_ALLOW_ALL" = true ]; then
+    iptables -P INPUT ACCEPT
+    iptables -P FORWARD ACCEPT
+    iptables -P OUTPUT ACCEPT
+    echo "WARNING: FIREWALL_ALLOW_ALL is true. The firewall is lifted, and egress is UNRESTRICTED."
+    exit 0
 fi
 
 # First allow DNS and localhost before any restrictions
@@ -195,20 +267,15 @@ while read -r cidr; do
     ipset add allowed-domains "$cidr"
 done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 
-# Resolve and add other allowed domains
-for domain in \
-    "registry.npmjs.org" \
-    "api.anthropic.com" \
-    "sentry.io" \
-    "statsig.anthropic.com" \
-    "statsig.com" \
-    "marketplace.visualstudio.com" \
-    "vscode.blob.core.windows.net" \
-    "update.code.visualstudio.com" \
-    "pypi.org" \
-    "files.pythonhosted.org" \
-    "claude.ai" \
-    "downloads.claude.ai"; do
+# Resolve and add the allowed domains from the settings: the template's, then any
+# the project appended. A value that is not a domain name is skipped, so a typo
+# leaves the firewall narrower rather than handing something odd to dig.
+DOMAIN_RE='^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'
+for domain in "${FIREWALL_ALLOWED_DOMAINS[@]}"; do
+    if [[ ! "$domain" =~ $DOMAIN_RE ]]; then
+        echo "WARNING: Skipping \"$domain\" in FIREWALL_ALLOWED_DOMAINS: it is not a domain name"
+        continue
+    fi
     echo "Resolving $domain..."
     ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
     if [ -z "$ips" ]; then

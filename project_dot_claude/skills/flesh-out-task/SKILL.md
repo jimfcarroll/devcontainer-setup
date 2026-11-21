@@ -1,6 +1,6 @@
 ---
 name: flesh-out-task
-description: How a task file is laid out, how its sub-tasks are grouped into commit sections, and how the plan for fleshing out a task and the plan for a commit section are written. Invoke when the user asks to plan to flesh out a task, to re-flesh one, or to plan one of its commit sections.
+description: THIS SKILL IS NOT TO BE USED WHEN PLANNING TO IMPLEMENT A COMMIT. How a task file is laid out, how its sub-tasks are grouped into commit sections, and how the plan for fleshing out a task and the plan for a commit section are written. Load ONLY when the user asks to plan to flesh out a task and calls this skill explicitly, to re-flesh one, or to plan one of its commit sections.
 argument-hint: "[task N, or task N of epic NNN]"
 ---
 
